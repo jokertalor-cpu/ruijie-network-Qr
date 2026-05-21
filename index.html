@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>WiFi Voucher</title>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.42.0/dist/umd/supabase.js"></script>
+<!-- QR Code -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+:root {
+  --bg: #0a0e1a;
+  --surface: #111827;
+  --card: #1a2235;
+  --border: #2a3a55;
+  --c1: #00d4ff;   /* 1hr - cyan */
+  --c3: #00ff88;   /* 3hr - green */
+  --cd: #ff6b35;   /* 1day - orange */
+  --text: #e8f0fe;
+  --muted: #6b7a99;
+  --danger: #ff4757;
+  --success: #00ff88;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', 'Noto Sans Myanmar', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+.app { position: relative; z-index: 1; padding: 16px; max-width: 420px; margin: 0 auto; }
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 0 18px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+
+.logo {
+  font-size: 1.1rem; font-weight: 900;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: var(--c1);
+}
+.logo span { color: var(--text); }
+
+.header-right { display: flex; align-items: center; gap: 10px; }
+
+.online-dot {
+  width: 8px; height: 8px;
+  background: var(--success); border-radius: 50%;
+  box-shadow: 0 0 8px var(--success);
+  animation: blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+.btn-manage {
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 8px;
+  padding: 5px 12px; font-size: 0.75rem;
+  cursor: pointer; transition: .2s;
+}
+.btn-manage:active { background: var(--border); color: var(--text); }
+
+/* ── Stock chips ── */
+.stock-row {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 10px; margin-bottom: 22px;
+}
+
+.chip {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 8px; text-align: center;
+  position: relative; overflow: hidden; transition: .2s;
+}
+.chip::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  border-radius: 12px 12px 0 0;
+}
+.chip.c1::before { background: var(--c1); }
+.chip.c3::before { background: var(--c3); }
+.chip.cd::before { background: var(--cd); }
+
+.chip-num {
+  font-size: 1.6rem; font-weight: 900; line-height: 1;
+  margin-bottom: 3px; font-variant-numeric: tabular-nums;
+}
+.chip.c1 .chip-num { color: var(--c1); }
+.chip.c3 .chip-num { color: var(--c3); }
+.chip.cd .chip-num { color: var(--cd); }
+
+.chip-label { font-size: 0.7rem; color: var(--muted); }
+
+.chip.low .chip-label::after {
+  content: ' ⚠';
+  color: var(--danger);
+  animation: blink .8s infinite;
+}
+
+/* ── Type buttons ── */
+.section-title {
+  font-size: 0.65rem; color: var(--muted);
+  letter-spacing: 3px; text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.type-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+
+.type-btn {
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 16px; padding: 20px 8px;
+  text-align: center; cursor: pointer;
+  transition: all .2s ease;
+  -webkit-user-select: none; user-select: none;
+  position: relative; overflow: hidden;
+}
+
+.type-btn.c1 { border-color: rgba(0,212,255,.25); }
+.type-btn.c3 { border-color: rgba(0,255,136,.25); }
+.type-btn.cd { border-color: rgba(255,107,53,.25); }
+
+.type-btn.c1:active,.type-btn.c1:focus { border-color: var(--c1); box-shadow: 0 0 24px rgba(0,212,255,.25); transform: scale(.96); }
+.type-btn.c3:active,.type-btn.c3:focus { border-color: var(--c3); box-shadow: 0 0 24px rgba(0,255,136,.25); transform: scale(.96); }
+.type-btn.cd:active,.type-btn.cd:focus { border-color: var(--cd); box-shadow: 0 0 24px rgba(255,107,53,.25); transform: scale(.96); }
+
+.type-btn.disabled { opacity: .35; pointer-events: none; }
+
+.type-icon { font-size: 2rem; margin-bottom: 8px; }
+.type-name { font-size: .9rem; font-weight: 800; margin-bottom: 3px; }
+.type-btn.c1 .type-name { color: var(--c1); }
+.type-btn.c3 .type-name { color: var(--c3); }
+.type-btn.cd .type-name { color: var(--cd); }
+.type-sub { font-size: .68rem; color: var(--muted); }
+
+/* ── QR Modal ── */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.88);
+  backdrop-filter: blur(6px);
+  z-index: 100; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.overlay.show { display: flex; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px; padding: 28px 22px;
+  width: 100%; max-width: 320px;
+  text-align: center; animation: slideUp .3s ease;
+}
+@keyframes slideUp { from{transform:translateY(30px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+.modal-badge {
+  display: inline-block;
+  font-size: .7rem; font-weight: 700;
+  padding: 4px 16px; border-radius: 20px;
+  letter-spacing: 2px; margin-bottom: 18px;
+}
+.badge-1hr { background: rgba(0,212,255,.12); color: var(--c1); border: 1px solid rgba(0,212,255,.35); }
+.badge-3hr { background: rgba(0,255,136,.12); color: var(--c3); border: 1px solid rgba(0,255,136,.35); }
+.badge-1day { background: rgba(255,107,53,.12); color: var(--cd); border: 1px solid rgba(255,107,53,.35); }
+
+.qr-box {
+  background: white; border-radius: 14px;
+  padding: 16px; display: inline-block; margin-bottom: 16px;
+}
+#qr-canvas { display: flex; align-items: center; justify-content: center; }
+
+.code-display {
+  font-size: 1.05rem; font-weight: 800;
+  letter-spacing: 4px; font-variant-numeric: tabular-nums;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px;
+  margin-bottom: 8px; word-break: break-all;
+}
+
+.code-hint { font-size: .75rem; color: var(--muted); margin-bottom: 20px; line-height: 1.7; }
+
+.modal-btns { display: flex; gap: 10px; }
+
+.btn {
+  flex: 1; padding: 14px; border-radius: 12px;
+  border: none; font-size: .9rem; font-weight: 700;
+  cursor: pointer; transition: .15s;
+  font-family: inherit;
+}
+.btn:active { transform: scale(.97); }
+.btn-confirm { background: var(--c3); color: #0a0e1a; }
+.btn-back {
+  background: var(--card); color: var(--muted);
+  border: 1px solid var(--border) !important;
+  flex: 0 0 76px;
+}
+
+/* ── Manage Modal ── */
+.manage-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px; padding: 24px 20px;
+  width: 100%; max-width: 360px;
+  animation: slideUp .3s ease;
+  max-height: 80vh; overflow-y: auto;
+}
+
+.manage-modal h3 {
+  font-size: .85rem; color: var(--c1);
+  letter-spacing: 2px; margin-bottom: 18px;
+}
+
+.form-row { margin-bottom: 14px; }
+.form-row label { display: block; font-size: .75rem; color: var(--muted); margin-bottom: 6px; }
+.form-row select, .form-row textarea {
+  width: 100%; background: var(--card);
+  border: 1px solid var(--border); color: var(--text);
+  border-radius: 10px; padding: 10px 12px;
+  font-size: .88rem; font-family: inherit; outline: none;
+}
+.form-row textarea { height: 110px; resize: none; font-family: monospace; font-size: .8rem; line-height: 1.8; }
+.form-hint { font-size: .68rem; color: var(--muted); margin-top: 4px; }
+
+.btn-save {
+  width: 100%; padding: 14px;
+  background: var(--c1); color: var(--bg);
+  border: none; border-radius: 12px;
+  font-size: .95rem; font-weight: 800;
+  cursor: pointer; font-family: inherit;
+  margin-top: 6px; transition: .2s;
+}
+.btn-save:active { transform: scale(.98); opacity: .9; }
+.btn-close {
+  width: 100%; padding: 11px;
+  background: var(--card); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 12px;
+  font-size: .85rem; cursor: pointer; font-family: inherit;
+  margin-top: 8px; transition: .2s;
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 28px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); padding: 12px 22px;
+  border-radius: 30px; font-size: .85rem;
+  z-index: 999; transition: transform .3s ease;
+  white-space: nowrap; pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ── Loading ── */
+.loading {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 200; gap: 16px;
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--c1);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+.loading p { color: var(--muted); font-size: .85rem; }
+
+.footer { text-align: center; font-size: .65rem; color: var(--border); padding: 20px 0 8px; letter-spacing: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <p>ချိတ်ဆက်နေသည်...</p>
+</div>
+
+<div class="app" id="app" style="display:none">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">WIFI<span>PASS</span></div>
+    <div class="header-right">
+      <div class="online-dot" id="online-dot"></div>
+      <button class="btn-manage" onclick="openManage()">+ ထည့်မည်</button>
+    </div>
+  </div>
+
+  <!-- Stock -->
+  <div class="stock-row">
+    <div class="chip c1" id="chip-1hr">
+      <div class="chip-num" id="n1hr">-</div>
+      <div class="chip-label">1 နာရီ</div>
+    </div>
+    <div class="chip c3" id="chip-3hr">
+      <div class="chip-num" id="n3hr">-</div>
+      <div class="chip-label">3 နာရီ</div>
+    </div>
+    <div class="chip cd" id="chip-1day">
+      <div class="chip-num" id="n1day">-</div>
+      <div class="chip-label">1 ရက်</div>
+    </div>
+  </div>
+
+  <!-- Type Buttons -->
+  <div class="section-title">▸ Voucher ထုတ်ရန် နှိပ်ပါ</div>
+  <div class="type-grid">
+    <div class="type-btn c1 disabled" id="tbtn-1hr" onclick="getVoucher('1hr')" tabindex="0">
+      <div class="type-icon">⚡</div>
+      <div class="type-name">1HR</div>
+      <div class="type-sub">၁ နာရီ</div>
+    </div>
+    <div class="type-btn c3 disabled" id="tbtn-3hr" onclick="getVoucher('3hr')" tabindex="0">
+      <div class="type-icon">🔥</div>
+      <div class="type-name">3HR</div>
+      <div class="type-sub">၃ နာရီ</div>
+    </div>
+    <div class="type-btn cd disabled" id="tbtn-1day" onclick="getVoucher('1day')" tabindex="0">
+      <div class="type-icon">💎</div>
+      <div class="type-name">1DAY</div>
+      <div class="type-sub">၁ ရက်</div>
+    </div>
+  </div>
+
+  <div class="footer">SMARTWIFI SYSTEM v2.0</div>
+</div>
+
+<!-- QR Modal -->
+<div class="overlay" id="qr-overlay">
+  <div class="modal">
+    <div class="modal-badge" id="qr-badge">1HR</div>
+    <div class="qr-box">
+      <div id="qr-canvas"></div>
+    </div>
+    <div class="code-display" id="qr-code-text">------</div>
+    <div class="code-hint">QR Scan လုပ်ပါ သို့မဟုတ် Code ကို ရိုက်ထည့်ပါ</div>
+    <div class="modal-btns">
+      <button class="btn btn-back" onclick="closeQR()">ပြန်</button>
+      <button class="btn btn-confirm" onclick="confirmUsed()">✓ သုံးပြီး</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Modal -->
+<div class="overlay" id="manage-overlay">
+  <div class="manage-modal">
+    <h3>⊕ VOUCHER ထည့်မည်</h3>
+    <div class="form-row">
+      <label>အမျိုးအစား</label>
+      <select id="inp-type">
+        <option value="1hr">1 နာရီ</option>
+        <option value="3hr">3 နာရီ</option>
+        <option value="1day">1 ရက်</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Voucher Code များ</label>
+      <textarea id="inp-codes" placeholder="တစ်ကြောင်းချင်း ထည့်ပါ&#10;ABC123&#10;DEF456&#10;GHI789"></textarea>
+      <div class="form-hint">* တစ်ကြောင်း = Voucher တစ်ခု</div>
+    </div>
+    <button class="btn-save" onclick="saveVouchers()">Supabase သို့ သိမ်းမည်</button>
+    <button class="btn-close" onclick="closeManage()">မလုပ်တော့ပါ</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================
+// ⚙️ CONFIG — ဒီနေရာမှာ key ထည့်ပါ
+// ============================================
+const SUPABASE_URL  = 'https://matbmmhixejurogatcnh.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hdGJtbWhpeGVqdXJvZ2F0Y25oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMzY4NTEsImV4cCI6MjA5NDkxMjg1MX0.DaawuGd5ILlRunTSOQk0vC2_QeWLQ9C4ae4HCXZBzYw'; // ← ပြောင်းပါ
+const LOW_THRESHOLD = 5;
+
+// ============================================
+// Init Supabase
+// ============================================
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let currentVoucher = null;
+let realtimeChannel = null;
+
+// ============================================
+// Boot
+// ============================================
+async function boot() {
+  try {
+    await loadStock();
+    subscribeRealtime();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  } catch(e) {
+    document.querySelector('#loading p').textContent = 'ချိတ်ဆက်မှု မအောင်မြင်ပါ — key စစ်ပါ';
+    console.error(e);
+  }
+}
+
+// ============================================
+// Load Stock
+// ============================================
+async function loadStock() {
+  const { data, error } = await sb
+    .from('vouchers')
+    .select('type')
+    .eq('status', 'unused');
+
+  if (error) throw error;
+
+  const counts = { '1hr': 0, '3hr': 0, '1day': 0 };
+  data.forEach(r => { if (counts[r.type] !== undefined) counts[r.type]++; });
+
+  updateChip('1hr', counts['1hr']);
+  updateChip('3hr', counts['3hr']);
+  updateChip('1day', counts['1day']);
+}
+
+function updateChip(type, count) {
+  const key = type.replace('hr','hr').replace('day','day');
+  document.getElementById(`n${type}`).textContent = count;
+
+  const chip = document.getElementById(`chip-${type}`);
+  const btn  = document.getElementById(`tbtn-${type}`);
+
+  chip.classList.toggle('low', count <= LOW_THRESHOLD);
+  btn.classList.toggle('disabled', count === 0);
+}
+
+// ============================================
+// Realtime Subscription
+// ============================================
+function subscribeRealtime() {
+  realtimeChannel = sb
+    .channel('vouchers-changes')
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'vouchers'
+    }, () => { loadStock(); })
+    .subscribe(status => {
+      const dot = document.getElementById('online-dot');
+      dot.style.background = status === 'SUBSCRIBED' ? 'var(--success)' : 'var(--danger)';
+    });
+}
+
+// ============================================
+// Get Voucher (atomic — race condition ကာကွယ်)
+// ============================================
+async function getVoucher(type) {
+  const btn = document.getElementById(`tbtn-${type}`);
+  if (btn.classList.contains('disabled')) return;
+
+  btn.style.opacity = '.5';
+  btn.style.pointerEvents = 'none';
+
+  try {
+    // Supabase မှ unused voucher တစ်ခုဆွဲပြီး ချက်ချင်း lock
+    const { data, error } = await sb
+      .from('vouchers')
+      .select('id, code, type')
+      .eq('type', type)
+      .eq('status', 'unused')
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      showToast('⚠ Voucher မရှိတော့ပါ');
+      return;
+    }
+
+    currentVoucher = data;
+    showQR(data);
+
+  } catch(e) {
+    showToast('Error: ' + e.message);
+  } finally {
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+  }
+}
+
+// ============================================
+// Show QR
+// ============================================
+function showQR(voucher) {
+  const badge = document.getElementById('qr-badge');
+  const labels = { '1hr': '1 နာရီ', '3hr': '3 နာရီ', '1day': '1 ရက်' };
+  badge.textContent = labels[voucher.type];
+  badge.className = 'modal-badge badge-' + voucher.type;
+
+  document.getElementById('qr-code-text').textContent = voucher.code;
+
+  const canvas = document.getElementById('qr-canvas');
+  canvas.innerHTML = '';
+  new QRCode(canvas, {
+    text: voucher.code,
+    width: 180, height: 180,
+    colorDark: '#000000', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  document.getElementById('qr-overlay').classList.add('show');
+}
+
+function closeQR() {
+  document.getElementById('qr-overlay').classList.remove('show');
+  currentVoucher = null;
+}
+
+// ============================================
+// Mark Used → Supabase update
+// ============================================
+async function confirmUsed() {
+  if (!currentVoucher) return;
+
+  const { error } = await sb
+    .from('vouchers')
+    .update({ status: 'used', used_at: new Date().toISOString() })
+    .eq('id', currentVoucher.id)
+    .eq('status', 'unused'); // double-check race condition
+
+  if (error) {
+    showToast('⚠ Update မအောင်မြင်ပါ');
+    return;
+  }
+
+  closeQR();
+  showToast('✓ Voucher သုံးပြီး မှတ်ပါပြီ');
+  // Realtime က stock ကို auto update လုပ်မည်
+}
+
+// ============================================
+// Manage — Add Vouchers to Supabase
+// ============================================
+function openManage()  { document.getElementById('manage-overlay').classList.add('show'); }
+function closeManage() { document.getElementById('manage-overlay').classList.remove('show'); }
+
+async function saveVouchers() {
+  const type  = document.getElementById('inp-type').value;
+  const raw   = document.getElementById('inp-codes').value.trim();
+
+  if (!raw) { showToast('⚠ Code ထည့်ပါ'); return; }
+
+  const codes = raw.split('\n').map(c => c.trim()).filter(c => c.length > 0);
+  if (codes.length === 0) { showToast('⚠ Code မှန်ကန်စွာ ထည့်ပါ'); return; }
+
+  // Expiry time တွက်
+  const now = new Date();
+  const expMap = { '1hr': 60, '3hr': 180, '1day': 1440 };
+  const expiresAt = new Date(now.getTime() + expMap[type] * 60000).toISOString();
+
+  const rows = codes.map(code => ({
+    code,
+    type,
+    status: 'unused',
+    expires_at: expiresAt
+  }));
+
+  const { error } = await sb.from('vouchers').upsert(rows, { onConflict: 'code', ignoreDuplicates: true });
+
+  if (error) {
+    showToast('⚠ Error: ' + error.message);
+    return;
+  }
+
+  document.getElementById('inp-codes').value = '';
+  closeManage();
+  showToast(`✓ ${codes.length} ခု Supabase သို့ သိမ်းပြီ`);
+}
+
+// ============================================
+// Toast
+// ============================================
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// Close overlay on background click
+['qr-overlay','manage-overlay'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) {
+      if (id === 'qr-overlay') closeQR();
+      else closeManage();
+    }
+  });
+});
+
+// Keyboard: Enter/Space on type buttons
+document.querySelectorAll('.type-btn').forEach(btn => {
+  btn.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') btn.click();
+  });
+});
+
+// Boot
+boot();
+</script>
+</body>
+</html>
